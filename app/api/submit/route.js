@@ -11,6 +11,25 @@ const REQUIRED_FIELDS = [
   "interviewProcess",
 ];
 
+async function getAccessToken() {
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: process.env.GOOGLE_OAUTH_CLIENT_ID,
+      client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+      refresh_token: process.env.GOOGLE_OAUTH_REFRESH_TOKEN,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error("Failed to refresh Google access token: " + JSON.stringify(data));
+  }
+  return data.access_token;
+}
+
 export async function POST(request) {
   const data = await request.json();
 
@@ -30,55 +49,51 @@ export async function POST(request) {
     );
   }
 
-  const sheetsUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
-  const sheetsSecret = process.env.GOOGLE_SHEETS_SECRET;
-  const slackWebhookUrl = process.env.SLACK_WEBHOOK_URL;
-
-  const sheetsRes = await fetch(sheetsUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-      Accept: "*/*",
-    },
-    body: JSON.stringify({ secret: sheetsSecret, ...data }),
-    redirect: "manual",
-  });
-
-  let finalSheetsRes = sheetsRes;
-  if ([301, 302, 303].includes(sheetsRes.status)) {
-    const location = sheetsRes.headers.get("location");
-    finalSheetsRes = await fetch(location);
-  }
-
-  const sheetsResultText = await finalSheetsRes.text();
-  console.log(
-    "DEBUG sheets response",
-    JSON.stringify({
-      initialStatus: sheetsRes.status,
-      finalStatus: finalSheetsRes.status,
-      bodyPreview: sheetsResultText.slice(0, 150),
-    })
-  );
-  let sheetsResult;
   try {
-    sheetsResult = JSON.parse(sheetsResultText);
-  } catch {
-    return NextResponse.json(
-      { success: false, error: "Could not save the submission (bad response). Please try again." },
-      { status: 502 }
-    );
-  }
+    const accessToken = await getAccessToken();
+    const sheetId = process.env.GOOGLE_SHEET_ID;
 
-  if (!finalSheetsRes.ok || sheetsResult.error) {
+    const appendRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Sheet1!A1:append?valueInputOption=RAW`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          values: [
+            [
+              new Date().toISOString(),
+              data.jobDescription,
+              data.hiringManager,
+              data.location,
+              data.team,
+              data.compensation,
+              data.roleDetails,
+              data.uniqueSellingPoints,
+              data.interviewProcess,
+              data.orgLeaderApproval,
+              data.maxNardiApproval,
+            ],
+          ],
+        }),
+      }
+    );
+
+    if (!appendRes.ok) {
+      const errBody = await appendRes.text();
+      throw new Error("Sheets API append failed: " + errBody);
+    }
+  } catch (err) {
+    console.error(err);
     return NextResponse.json(
       { success: false, error: "Could not save the submission. Please try again." },
       { status: 502 }
     );
   }
 
-  await fetch(slackWebhookUrl, {
+  await fetch(process.env.SLACK_WEBHOOK_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
