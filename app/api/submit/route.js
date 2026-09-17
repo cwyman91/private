@@ -47,7 +47,24 @@ export async function POST(request) {
     finalSheetsRes = await fetch(location);
   }
 
-  const sheetsResult = await finalSheetsRes.json();
+  const sheetsResultText = await finalSheetsRes.text();
+  console.log(
+    "DEBUG sheets response",
+    JSON.stringify({
+      initialStatus: sheetsRes.status,
+      finalStatus: finalSheetsRes.status,
+      bodyPreview: sheetsResultText.slice(0, 150),
+    })
+  );
+  let sheetsResult;
+  try {
+    sheetsResult = JSON.parse(sheetsResultText);
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Could not save the submission (bad response). Please try again." },
+      { status: 502 }
+    );
+  }
 
   if (!finalSheetsRes.ok || sheetsResult.error) {
     return NextResponse.json(
