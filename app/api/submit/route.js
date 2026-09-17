@@ -38,10 +38,18 @@ export async function POST(request) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ secret: sheetsSecret, ...data }),
+    redirect: "manual",
   });
-  const sheetsResult = await sheetsRes.json();
 
-  if (!sheetsRes.ok || sheetsResult.error) {
+  let finalSheetsRes = sheetsRes;
+  if ([301, 302, 303].includes(sheetsRes.status)) {
+    const location = sheetsRes.headers.get("location");
+    finalSheetsRes = await fetch(location);
+  }
+
+  const sheetsResult = await finalSheetsRes.json();
+
+  if (!finalSheetsRes.ok || sheetsResult.error) {
     return NextResponse.json(
       { success: false, error: "Could not save the submission. Please try again." },
       { status: 502 }
