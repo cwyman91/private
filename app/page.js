@@ -3,25 +3,77 @@
 import { useState } from "react";
 import styles from "./page.module.css";
 
+const LOCATION_OPTIONS = [
+  "New York - (hybrid)",
+  "San Francisco - (hybrid)",
+  "Remote",
+];
+
+const TEAM_OPTIONS = ["Product", "Engineering", "Operations", "Marketing", "GTM"];
+
+const LEVEL_OPTIONS = ["Junior", "Mid", "Senior"];
+
 const FIELDS = [
-  { name: "jobDescription", label: "Job Description", multiline: true },
-  { name: "hiringManager", label: "Hiring Manager", multiline: false },
-  { name: "location", label: "Location", multiline: false },
-  { name: "team", label: "Team", multiline: false },
-  { name: "compensation", label: "Compensation", multiline: false },
-  { name: "roleDetails", label: "Role Details", multiline: true },
   {
-    name: "uniqueSellingPoints",
-    label: "Unique Selling Points (why someone would want this role)",
-    multiline: true,
+    name: "jobDescription",
+    label: "Job Description",
+    type: "textarea",
+    guidance: (
+      <>
+        See a{" "}
+        <a
+          href="https://app.notion.com/p/NEW-JOB-EXAMPLE-3f042cc7c5658027b8fcc84f03ec837b"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          sample intake example
+        </a>{" "}
+        for formatting guidance.
+      </>
+    ),
   },
-  { name: "interviewProcess", label: "Interview Process", multiline: true },
+  {
+    name: "hiringManager",
+    label: "Hiring Manager",
+    type: "text",
+    guidance: "Who is hiring for this role?",
+  },
+  {
+    name: "location",
+    label: "Location",
+    type: "multiselect",
+    options: LOCATION_OPTIONS,
+  },
+  {
+    name: "team",
+    label: "Team",
+    type: "select",
+    options: TEAM_OPTIONS,
+  },
+  {
+    name: "level",
+    label: "Level",
+    type: "select",
+    options: LEVEL_OPTIONS,
+    guidance: "Select the seniority level for this role.",
+  },
+  {
+    name: "additionalDetails",
+    label: "Additional Details",
+    type: "textarea",
+    guidance:
+      "Include details not on the JD, such as team structure, unique selling points, etc.",
+  },
 ];
 
 const EMPTY_FORM = FIELDS.reduce((acc, field) => {
-  acc[field.name] = "";
+  acc[field.name] = field.type === "multiselect" ? [] : "";
   return acc;
 }, {});
+
+function isFieldEmpty(value) {
+  return Array.isArray(value) ? value.length === 0 : !value || !String(value).trim();
+}
 
 export default function Home() {
   const [formData, setFormData] = useState(EMPTY_FORM);
@@ -37,9 +89,26 @@ export default function Home() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   }
 
+  function handleMultiSelectToggle(name, option) {
+    setFormData((prev) => {
+      const current = prev[name];
+      const next = current.includes(option)
+        ? current.filter((o) => o !== option)
+        : [...current, option];
+      return { ...prev, [name]: next };
+    });
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (!canSubmit) return;
+
+    for (const field of FIELDS) {
+      if (isFieldEmpty(formData[field.name])) {
+        setError(`Please fill out ${field.label}.`);
+        return;
+      }
+    }
 
     setSubmitting(true);
     setError(null);
@@ -50,6 +119,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
+          location: formData.location.join(", "),
           orgLeaderApproval,
           maxNardiApproval,
         }),
@@ -108,24 +178,57 @@ export default function Home() {
               <label className={styles.label} htmlFor={field.name}>
                 {field.label}
               </label>
-              {field.multiline ? (
+              {field.guidance && <p className={styles.guidance}>{field.guidance}</p>}
+
+              {field.type === "textarea" && (
                 <textarea
                   id={field.name}
                   className={styles.textarea}
-                  required
                   rows={4}
                   value={formData[field.name]}
                   onChange={(e) => handleFieldChange(field.name, e.target.value)}
                 />
-              ) : (
+              )}
+
+              {field.type === "text" && (
                 <input
                   id={field.name}
                   className={styles.input}
                   type="text"
-                  required
                   value={formData[field.name]}
                   onChange={(e) => handleFieldChange(field.name, e.target.value)}
                 />
+              )}
+
+              {field.type === "select" && (
+                <select
+                  id={field.name}
+                  className={styles.select}
+                  value={formData[field.name]}
+                  onChange={(e) => handleFieldChange(field.name, e.target.value)}
+                >
+                  <option value="">Select {field.label.toLowerCase()}...</option>
+                  {field.options.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {field.type === "multiselect" && (
+                <div className={styles.checkboxGroup}>
+                  {field.options.map((option) => (
+                    <label className={styles.checkboxOption} key={option}>
+                      <input
+                        type="checkbox"
+                        checked={formData[field.name].includes(option)}
+                        onChange={() => handleMultiSelectToggle(field.name, option)}
+                      />
+                      {option}
+                    </label>
+                  ))}
+                </div>
               )}
             </div>
           ))}
