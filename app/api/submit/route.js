@@ -9,6 +9,10 @@ const REQUIRED_FIELDS = [
   "additionalDetails",
 ];
 
+function slackEscape(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 async function getAccessToken() {
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -47,9 +51,11 @@ export async function POST(request) {
     );
   }
 
+  const sheetId = process.env.GOOGLE_SHEET_ID;
+  let rowLink = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
+
   try {
     const accessToken = await getAccessToken();
-    const sheetId = process.env.GOOGLE_SHEET_ID;
 
     const appendRes = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Sheet1!A1:append?valueInputOption=RAW`,
@@ -81,6 +87,10 @@ export async function POST(request) {
       const errBody = await appendRes.text();
       throw new Error("Sheets API append failed: " + errBody);
     }
+
+    const appendData = await appendRes.json();
+    const range = appendData.updates?.updatedRange?.split("!")[1];
+    if (range) rowLink += `#gid=0&range=${range}`;
   } catch (err) {
     console.error(err);
     return NextResponse.json(
@@ -95,11 +105,19 @@ export async function POST(request) {
     body: JSON.stringify({
       text: [
         ":tada: *New role approved to open!*",
-        `*Team:* ${data.team}`,
-        `*Location:* ${data.location}`,
-        `*Hiring Manager:* ${data.hiringManager}`,
-        `*Level:* ${data.level}`,
-        "Both org leader and Max Nardi approvals are confirmed. Full details are saved in the Job Requests sheet.",
+        `*Team:* ${slackEscape(data.team)}`,
+        `*Location:* ${slackEscape(data.location)}`,
+        `*Hiring Manager:* ${slackEscape(data.hiringManager)}`,
+        `*Level:* ${slackEscape(data.level)}`,
+        "",
+        "*Job Description:*",
+        slackEscape(data.jobDescription),
+        "",
+        "*Additional Details:*",
+        slackEscape(data.additionalDetails),
+        "",
+        "Both org leader and Max Nardi approvals are confirmed.",
+        `<${rowLink}|:page_facing_up: View this request in the Job Requests sheet>`,
       ].join("\n"),
     }),
   });
